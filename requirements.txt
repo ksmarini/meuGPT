@@ -1,5 +1,4 @@
 openai
-python-dotenv
 streamlit
 unidecode
 pymysql
