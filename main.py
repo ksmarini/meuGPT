@@ -1,4 +1,14 @@
-"""Importação dos módulos"""
+"""Importa os módulos necessários para o funcionamento do chatbot.
+
+Módulos importados:
+- re: Módulo para operações com expressões regulares.
+- pickle: Módulo para serialização e desserialização de objetos Python.
+- pathlib.Path: Classe para manipulação de caminhos de arquivos e diretórios.
+- unidecode: Função para remover acentos de caracteres Unicode.
+- openai: Módulo para interação com a API da OpenAI.
+- streamlit: Módulo para criação de aplicativos web interativos.
+
+"""
 import re
 import pickle
 from pathlib import Path
@@ -45,13 +55,24 @@ def chat_openai(api_key, mensagens, modelo='gpt-3.5-turbo', temperatura=0.5, str
 
 def salva_chave(chave):
     """
-    Função que salva uma chave em um arquivo na pasta de configurações.
+    Salva a chave fornecida em um arquivo na pasta de configurações.
 
     Args:
         chave: A chave a ser salva no arquivo.
+
+    Raises:
+        OSError: Se ocorrer um erro ao acessar ou escrever no arquivo.
+        pickle.PicklingError: Se ocorrer um erro ao serializar a chave.
+
+    Returns:
+        None
     """
-    with open(PASTA_CONFIGURACOES / 'chave', 'wb') as f:
-        pickle.dump(chave, f)
+    try:
+        with open(PASTA_CONFIGURACOES / 'chave', 'wb') as f:
+            pickle.dump(chave, f)
+            print("Chave salva com sucesso")
+    except (OSError, pickle.PicklingError) as e:
+        print(f"Erro ao salvar a chave: {e}")
 
 
 def le_chave():
@@ -109,9 +130,7 @@ def retorna_nome_da_mensagem(mensagens):
     # Usando next com uma expressão geradora para encontrar a primeira mensagem de um usuário
     nome_mensagem = next(
         (mensagem.get('content', '')[:30] for mensagem in mensagens
-         if mensagem.get('role') == 'user'),
-        ''
-    )
+         if mensagem.get('role') == 'user'), '')
     return nome_mensagem
 
 
@@ -147,7 +166,7 @@ def salvar_mensagens(mensagens):
     try:
         with open(caminho_arquivo, 'wb') as f:
             pickle.dump(arquivo_salvar, f)
-        print(f"Mensagem salva com sucesso em {caminho_arquivo}")
+        # print(f"Mensagem salva com sucesso em {caminho_arquivo}")
         return True
     except (OSError, pickle.PicklingError) as e:
         print(f"Erro ao salvar a mensagem: {e}")
@@ -232,7 +251,8 @@ def ler_mensagens(mensagens, key='mensagem'):
 
 def listar_conversas():
     """
-    Função que lista as conversas disponíveis na pasta de mensagens, ordenadas por data de modificação.
+    Função que lista as conversas disponíveis na pasta de mensagens,
+    ordenadas por data de modificação.
 
     Returns:
         list: Lista dos nomes das conversas ordenadas por data de modificação.
@@ -289,6 +309,7 @@ def tab_conversas(tab):
         '➕ Nova Conversa', on_click=seleciona_conversa, args=('', ), use_container_width=True
     )
     tab.markdown('')
+
     conversas = listar_conversas()
     for nome_arquivo in conversas:
         nome_mensagem = desconverte_nome_mensagem(nome_arquivo).capitalize()
@@ -311,8 +332,15 @@ def tab_configuracoes(tab):
         tab: Objeto de aba do Streamlit.
     """
     modelo_escolhido = tab.selectbox('Selecione o modelo',
-                                     ['gpt-3.5-turbo', 'gpt-4'])
+                                     ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo-preview'])
     st.session_state['modelo'] = modelo_escolhido
+
+    temperatura_gpt = tab.slider('Temperatura do ChatGPT',
+                                        min_value=0.1,
+                                        max_value=1.0,
+                                        value=0.5,
+                                        step=0.1)
+    st.session_state['temperatura_gpt'] = temperatura_gpt
 
     chave = tab.text_input('Adicione sua API key', value=st.session_state['api_key'])
     if chave != st.session_state['api_key']:
@@ -327,6 +355,8 @@ def inicializacao():
 
     Não possui parâmetros de entrada nem retorna valores.
     """
+    if 'temperatura_gpt' not in st.session_state:
+        st.session_state.temperatura_gpt = 0.5
     if 'mensagens' not in st.session_state:
         st.session_state.mensagens = []
     if 'conversa_atual' not in st.session_state:
@@ -339,7 +369,8 @@ def inicializacao():
 
 def pagina_principal():
     """
-    Função que exibe a página principal do chatbot, permitindo interação com o usuário e respostas do assistente.
+    Função que exibe a página principal do chatbot, permitindo interação com
+    o usuário e respostas do assistente.
 
     """
     mensagens = ler_mensagens(st.session_state['mensagens'])
@@ -361,7 +392,11 @@ def pagina_principal():
         placeholder = chat.empty()
         placeholder.markdown("▌")
         resposta_completa = ''
-        respostas = chat_openai(st.session_state['api_key'], mensagens, stream=True)
+        respostas = chat_openai(st.session_state['api_key'],
+                                mensagens,
+                                modelo=st.session_state['modelo'],
+                                temperatura=st.session_state['temperatura_gpt'],
+                                stream=True)
 
         for resposta in respostas:
             if resposta.choices[0].delta.content:
